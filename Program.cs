@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
+using Hqub.MusicBrainz;
 using Logger;
 using YoutubeExplode;
 using YoutubeExplode.Converter;
@@ -15,6 +16,8 @@ static class Program
 
     static void Main(string[] args)
     {
+        args = "PL3pKDp-F7PPtqyA3Q_F8lpLohgbZnOAiU /d1/Music".Split(' ');
+
         if (args.Length != 2)
         {
             Console.WriteLine("YouTube playlist downloader");
@@ -53,16 +56,34 @@ static class Program
 
     static async Task Run(CancellationToken cancellationToken = default)
     {
-        HashSet<string> onDisk = [];
-        HashSet<string> downloaded = [];
+        Dictionary<string, string> onDisk = [];
+        HashSet<string> online = [];
+
+        YoutubeClient youtube = new();
+
+        MusicBrainzClient musicBrainz = new(new HttpClient(new SocketsHttpHandler()
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate,
+        })
+        {
+            DefaultRequestHeaders = { { "User-Agent", "Hqub.MusicBrainz/3.0 (https://github.com/avatar29A/MusicBrainz)" } },
+            BaseAddress = new Uri("https://musicbrainz.org/ws/2/"),
+        })
+        {
+            Cache = new FileRequestCache("./cache"),
+        };
 
         Log.MinorAction("Checking files");
 
         foreach (string filename in Directory.GetFiles(OutputPath, "*.mp3"))
         {
+            if (cancellationToken.IsCancellationRequested) return;
             TagLib.File file = TagLib.File.Create(filename);
             string name = Path.GetFileNameWithoutExtension(filename);
             string[] parts = name.Split(" - ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            bool modified = false;
+
             if (parts.Length == 2)
             {
                 string[] artists = parts[0].Split('&', StringSplitOptions.TrimEntries);
@@ -70,25 +91,38 @@ static class Program
 
                 if (!file.Tag.Performers.SequenceEqual(artists))
                 {
-                    Log.Warning($"Artists fixed: \"{string.Join(" & ", file.Tag.Performers)}\" --> \"{string.Join(" & ", artists)}\"");
+                    Log.None($"Artists fixed: `{string.Join(" & ", file.Tag.Performers)}` --> `{string.Join(" & ", artists)}`");
+                    file.Tag.Performers = artists;
+                    modified = true;
                 }
-                file.Tag.Performers = artists;
 
                 if (file.Tag.Title != title)
                 {
-                    Log.Warning($"Title fixed: \"{file.Tag.Title}\" --> \"{title}\"");
+                    Log.None($"Title fixed: `{file.Tag.Title}` --> `{title}`");
+                    file.Tag.Title = title;
+                    modified = true;
                 }
-                file.Tag.Title = title;
             }
             else
             {
-                Log.Warning($"Invalid filename \"{name}\"");
+                Log.Warning($"Invalid filename `{name}`");
             }
-            file.Save();
+
+            bool success = await MusicBrainz.FetchMetadata(file, musicBrainz, cancellationToken);
+
+            if (success)
+            {
+                modified = true;
+            }
+
+            if (modified)
+            {
+                file.Save();
+            }
 
             if (!string.IsNullOrWhiteSpace(file.Tag.Description))
             {
-                onDisk.Add(file.Tag.Description);
+                onDisk.Add(file.Tag.Description, filename);
             }
             else
             {
@@ -96,18 +130,39 @@ static class Program
             }
         }
 
-        YoutubeClient youtube = new();
-
         Log.MinorAction("Fetching playlist");
 
         Playlist playlist = await youtube.Playlists.GetAsync($"https://youtube.com/playlist?list={PlaylistId}", cancellationToken);
 
-        Log.MajorAction($"Downloading playlist \e[1m{playlist.Title}\e[22m");
+        await DownloadVideos(youtube.Playlists.GetVideosAsync(playlist.Url, cancellationToken), youtube, musicBrainz, onDisk, online, cancellationToken);
 
-        await DownloadVideos(youtube.Playlists.GetVideosAsync(playlist.Url, cancellationToken), youtube, onDisk, downloaded, cancellationToken);
+        List<string> deleteFiles = [];
+        foreach ((string id, string filename) in onDisk)
+        {
+            if (!online.Contains(id))
+            {
+                deleteFiles.Add(filename);
+            }
+        }
+
+        if (deleteFiles.Count > 0)
+        {
+            foreach (string filename in deleteFiles)
+            {
+                Log.Warning($"Music file \"{Path.GetFileNameWithoutExtension(filename)}\" shouldn't be here");
+            }
+
+            if (Log.AskYesNo("Do you want to delete the files above?", true))
+            {
+                foreach (string filename in deleteFiles)
+                {
+                    File.Delete(filename);
+                }
+            }
+        }
     }
 
-    static async Task DownloadVideos(IAsyncEnumerable<PlaylistVideo> videos, YoutubeClient youtube, HashSet<string> onDisk, HashSet<string> downloaded, CancellationToken cancellationToken = default)
+    static async Task DownloadVideos(IAsyncEnumerable<PlaylistVideo> videos, YoutubeClient youtube, MusicBrainzClient musicBrainz, Dictionary<string, string> onDisk, HashSet<string> online, CancellationToken cancellationToken = default)
     {
         Channel<PlaylistVideo> channel = Channel.CreateUnbounded<PlaylistVideo>();
 
@@ -118,7 +173,8 @@ static class Program
             Log.MinorAction("Fetching videos");
             await foreach (PlaylistVideo video in videos)
             {
-                if (onDisk.Contains(video.Id)) continue;
+                online.Add(video.Id);
+                if (onDisk.ContainsKey(video.Id)) continue;
                 await channel.Writer.WriteAsync(video, cancellationToken);
             }
             channel.Writer.Complete();
@@ -127,13 +183,13 @@ static class Program
 
         for (int i = 0; i < MaxConcurrency; i++)
         {
-            tasks[i + 1] = DownloadVideosJob(youtube, channel, cancellationToken);
+            tasks[i + 1] = DownloadVideosJob(youtube, musicBrainz, channel, cancellationToken);
         }
 
         await Task.WhenAll(tasks);
     }
 
-    static async Task DownloadVideosJob(YoutubeClient youtube, Channel<PlaylistVideo> channel, CancellationToken cancellationToken = default)
+    static async Task DownloadVideosJob(YoutubeClient youtube, MusicBrainzClient musicBrainz, Channel<PlaylistVideo> channel, CancellationToken cancellationToken = default)
     {
         await foreach (PlaylistVideo video in channel.Reader.ReadAllAsync(cancellationToken))
         {
@@ -141,11 +197,11 @@ static class Program
 
             Log.MinorAction($"Downloading \e[1m{video.Title}\e[22m");
 
-            await DownloadVideo(youtube, video, cancellationToken);
+            await DownloadVideo(youtube, musicBrainz, video, cancellationToken);
         }
     }
 
-    static async Task DownloadVideo(YoutubeClient youtube, PlaylistVideo video, CancellationToken cancellationToken = default)
+    static async Task DownloadVideo(YoutubeClient youtube, MusicBrainzClient musicBrainz, PlaylistVideo video, CancellationToken cancellationToken = default)
     {
         HttpRequestException? lastException = null;
 
@@ -154,7 +210,7 @@ static class Program
             if (cancellationToken.IsCancellationRequested) return;
             try
             {
-                await DownloadVideoJob(youtube, video, cancellationToken);
+                await DownloadVideoJob(youtube, musicBrainz, video, cancellationToken);
                 return;
             }
             catch (HttpRequestException ex)
@@ -182,15 +238,15 @@ static class Program
         }
     }
 
-    static async Task DownloadVideoJob(YoutubeClient youtube, PlaylistVideo video, CancellationToken cancellationToken = default)
+    static async Task DownloadVideoJob(YoutubeClient youtube, MusicBrainzClient musicBrainz, PlaylistVideo video, CancellationToken cancellationToken = default)
     {
-        (string author, string title) = NormalizeMetadata(video);
+        (string artist, string title) = YouTube.NormalizeMetadata(video);
 
         StreamManifest streamManifest = await youtube.Videos.Streams.GetManifestAsync(video.Url, cancellationToken);
 
         IStreamInfo? bestAudioStream = streamManifest.GetAudioStreams().GetWithHighestBitrate();
 
-        string filename = Path.Combine(OutputPath, $"{author.Replace("/", "_").Replace("\\", "_")} - {title.Replace("/", "_").Replace("\\", "_")}.mp3");
+        string filename = Path.Combine(OutputPath, $"{artist.Replace("/", "_").Replace("\\", "_")} - {title.Replace("/", "_").Replace("\\", "_")}.mp3");
 
         await youtube.Videos.DownloadAsync(
             [bestAudioStream],
@@ -199,43 +255,12 @@ static class Program
             cancellationToken
         );
 
-        byte[] imageBytes;
-        using (HttpClient client = new())
-        {
-            imageBytes = await client.GetByteArrayAsync(video.Thumbnails.OrderByDescending(v => v.Resolution.Area).First().Url, cancellationToken);
-        }
-
         TagLib.File file = TagLib.File.Create(filename);
 
-        TagLib.Id3v2.AttachmentFrame cover = new()
-        {
-            Type = TagLib.PictureType.FrontCover,
-            Description = "Cover",
-            MimeType = System.Net.Mime.MediaTypeNames.Image.Jpeg,
-            Data = imageBytes,
-            TextEncoding = TagLib.StringType.UTF16
-        };
-        file.Tag.Pictures = [cover];
+        await YouTube.FetchMetadata(file, video, cancellationToken);
+        await MusicBrainz.FetchMetadata(file, musicBrainz, cancellationToken);
 
-        file.Tag.Title = title;
-        file.Tag.Performers = author.Split('&', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        file.Tag.Description = video.Id;
         file.RemoveTags(file.TagTypes & ~file.TagTypesOnDisk);
         file.Save();
-    }
-
-    static (string Author, string Title) NormalizeMetadata(PlaylistVideo video)
-    {
-        string author = video.Author.ChannelTitle;
-        string title = video.Title;
-
-        if (title.StartsWith(author.ToLowerInvariant() + " - ", StringComparison.InvariantCultureIgnoreCase))
-        {
-            title = title[(author.Length + 3)..].TrimStart();
-        }
-
-        author = author.TrimEnd(" - Topic").TrimEnd();
-
-        return (author, title);
     }
 }
