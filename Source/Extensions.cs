@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Hqub.MusicBrainz;
 
+namespace YtPlaylist;
+
 static class Extensions
 {
     public static string TrimStart(this string v, string value, StringComparison comparison = StringComparison.InvariantCultureIgnoreCase)

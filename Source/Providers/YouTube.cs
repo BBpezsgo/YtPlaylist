@@ -1,5 +1,7 @@
 using YoutubeExplode.Playlists;
 
+namespace YtPlaylist;
+
 static class YouTube
 {
     public static async Task FetchMetadata(TagLib.File file, PlaylistVideo video, CancellationToken cancellationToken)

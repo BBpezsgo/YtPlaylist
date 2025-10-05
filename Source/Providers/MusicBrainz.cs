@@ -3,6 +3,8 @@ using Hqub.MusicBrainz.Entities;
 using Hqub.MusicBrainz.Entities.Collections;
 using Logger;
 
+namespace YtPlaylist;
+
 static class MusicBrainz
 {
     static DateTimeOffset _lastMusicBrainzRequest;

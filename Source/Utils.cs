@@ -1,5 +1,7 @@
 using Logger;
 
+namespace YtPlaylist;
+
 static class Utils
 {
     public static async Task<bool> DownloadCoverImage(TagLib.File file, Uri url, string description, TagLib.PictureType type, CancellationToken cancellationToken)

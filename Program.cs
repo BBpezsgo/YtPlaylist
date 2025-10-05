@@ -7,6 +7,8 @@ using YoutubeExplode.Converter;
 using YoutubeExplode.Playlists;
 using YoutubeExplode.Videos.Streams;
 
+namespace YtPlaylist;
+
 static class Program
 {
     [NotNull] static string? PlaylistId = null;
@@ -16,7 +18,9 @@ static class Program
 
     static void Main(string[] args)
     {
+#if DEBUG
         args = "PL3pKDp-F7PPtqyA3Q_F8lpLohgbZnOAiU /d1/Music".Split(' ');
+#endif
 
         if (args.Length != 2)
         {
@@ -70,7 +74,10 @@ static class Program
             BaseAddress = new Uri("https://musicbrainz.org/ws/2/"),
         })
         {
-            Cache = new FileRequestCache("./cache"),
+            Cache = new FileRequestCache("./cache")
+            {
+                Timeout = TimeSpan.FromDays(30),
+            },
         };
 
         Log.MinorAction("Checking files");
@@ -108,12 +115,10 @@ static class Program
                 Log.Warning($"Invalid filename `{name}`");
             }
 
-            bool success = await MusicBrainz.FetchMetadata(file, musicBrainz, cancellationToken);
-
-            if (success)
-            {
-                modified = true;
-            }
+            //if (await MusicBrainz.FetchMetadata(file, musicBrainz, cancellationToken))
+            //{
+            //    modified = true;
+            //}
 
             if (modified)
             {

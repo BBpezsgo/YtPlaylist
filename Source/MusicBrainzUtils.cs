@@ -1,5 +1,7 @@
 using Hqub.MusicBrainz.Entities;
 
+namespace YtPlaylist;
+
 static class MusicBrainzUtils
 {
     const int IndentSize = 2;

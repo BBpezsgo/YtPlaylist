@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using Hqub.MusicBrainz.Cache;
 
+namespace YtPlaylist;
+
 /// <summary>
 /// Source: https://github.com/avatar29A/MusicBrainz/blob/master/src/Hqub.MusicBrainz.Client/FileRequestCache.cs
 /// </summary>
