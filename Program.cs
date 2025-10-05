@@ -18,21 +18,66 @@ static class Program
 
     static void Main(string[] args)
     {
-#if DEBUG
-        args = "PL3pKDp-F7PPtqyA3Q_F8lpLohgbZnOAiU /d1/Music".Split(' ');
-#endif
-
-        if (args.Length != 2)
+        for (int i = 0; i < args.Length; i++)
         {
-            Console.WriteLine("YouTube playlist downloader");
+            switch (args[i])
+            {
+                case "-p" or "--playlist":
+                    if (PlaylistId is not null)
+                    {
+                        Log.Error($"Playlist id already defined");
+                        return;
+                    }
+
+                    if (i + 1 == args.Length)
+                    {
+                        Log.Error($"Expected a playlist id after the argument {args[i]}");
+                        return;
+                    }
+
+                    PlaylistId = args[++i];
+                    break;
+                case "-o" or "--output":
+                    if (OutputPath is not null)
+                    {
+                        Log.Error($"Output directory already defined");
+                        return;
+                    }
+
+                    if (i + 1 == args.Length)
+                    {
+                        Log.Error($"Expected an output directory after the argument {args[i]}");
+                        return;
+                    }
+
+                    OutputPath = args[++i];
+                    break;
+                default:
+                    Log.Error($"Unexpected argument {args[i]}");
+                    return;
+            }
+        }
+
+        if (args.Length == 0 || args.Contains("-h") || args.Contains("--help"))
+        {
+            Console.WriteLine("YouTube Playlist Downloader");
             Console.WriteLine("");
             Console.WriteLine("Usage:");
-            Console.WriteLine("YtPlaylist <playlist id> <destination directory>");
+            Console.WriteLine("YtPlaylist <-p|--playlist Playlist Id> <-o|--output Output Directory>");
             return;
         }
 
-        PlaylistId = args[0];
-        OutputPath = args[1];
+        if (string.IsNullOrEmpty(PlaylistId))
+        {
+            Log.Error($"Playlist id not defined.");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(OutputPath))
+        {
+            Log.Error($"Output directory not defined.");
+            return;
+        }
 
         TagLib.Id3v2.Tag.DefaultVersion = 3;
         TagLib.Id3v2.Tag.ForceDefaultVersion = true;

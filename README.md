@@ -4,9 +4,13 @@
 
 Downloads and synchronizes YouTube playlists as MP3 files so you can listen to them offline!!!
 
+## Runtime Dependencies
+
+- `ffmpeg`
+
 ## Example Usage:
 
-`YtPlaylist -i YOUTUBE_PLAYLIST_ID -o ./Music`
+`YtPlaylist -p YOUTUBE_PLAYLIST_ID -o ./Music`
 
 > [!TIP]
 > You can get the playlist id by navigating to the playlist on YouTube. For example:
