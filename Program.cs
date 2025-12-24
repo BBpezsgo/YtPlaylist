@@ -14,9 +14,9 @@ static class Program
     [NotNull] static string? PlaylistId = null;
     [NotNull] static string? OutputPath = null;
     const int MaxRetries = 4;
-    const int MaxConcurrency = 2;
+    const int MaxConcurrency = 1;
 
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
         {
@@ -26,13 +26,13 @@ static class Program
                     if (PlaylistId is not null)
                     {
                         Log.Error($"Playlist id already defined");
-                        return;
+                        return 1;
                     }
 
                     if (i + 1 == args.Length)
                     {
                         Log.Error($"Expected a playlist id after the argument {args[i]}");
-                        return;
+                        return 1;
                     }
 
                     PlaylistId = args[++i];
@@ -41,20 +41,20 @@ static class Program
                     if (OutputPath is not null)
                     {
                         Log.Error($"Output directory already defined");
-                        return;
+                        return 1;
                     }
 
                     if (i + 1 == args.Length)
                     {
                         Log.Error($"Expected an output directory after the argument {args[i]}");
-                        return;
+                        return 1;
                     }
 
                     OutputPath = args[++i];
                     break;
                 default:
                     Log.Error($"Unexpected argument {args[i]}");
-                    return;
+                    return 1;
             }
         }
 
@@ -64,19 +64,19 @@ static class Program
             Console.WriteLine("");
             Console.WriteLine("Usage:");
             Console.WriteLine("YtPlaylist <-p|--playlist Playlist Id> <-o|--output Output Directory>");
-            return;
+            return 1;
         }
 
         if (string.IsNullOrEmpty(PlaylistId))
         {
             Log.Error($"Playlist id not defined.");
-            return;
+            return 1;
         }
 
         if (string.IsNullOrEmpty(OutputPath))
         {
             Log.Error($"Output directory not defined.");
-            return;
+            return 1;
         }
 
         TagLib.Id3v2.Tag.DefaultVersion = 3;
@@ -101,6 +101,8 @@ static class Program
         {
             Log.Error(task.Exception);
         }
+
+        return 0;
     }
 
     static async Task Run(CancellationToken cancellationToken = default)
@@ -273,6 +275,13 @@ static class Program
                     if (cancellationToken.IsCancellationRequested) return;
                 }
             }
+            catch (Exception ex)
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                Log.Error($"Failed to download {video.Title}:");
+                Log.Error(ex);
+                return;
+            }
         }
 
         if (cancellationToken.IsCancellationRequested) return;
@@ -288,15 +297,27 @@ static class Program
         }
     }
 
-    static async Task DownloadVideoJob(YoutubeClient youtube, MusicBrainzClient musicBrainz, PlaylistVideo video, CancellationToken cancellationToken = default)
+    static async Task DownloadAudioData(string filename, YoutubeClient youtube, string url, CancellationToken cancellationToken = default)
     {
-        (string artist, string title) = YouTube.NormalizeMetadata(video);
+        using (Process process = Process.Start(new ProcessStartInfo()
+        {
+            FileName = "yt-dlp",
+            Arguments = $"-o \"{filename}\" -x --audio-format mp3 {url}",
+            UseShellExecute = true,
+        })!)
+        {
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                throw new Exception($"yt-dlp exited with code {process.ExitCode}");
+            }
+            Console.WriteLine("OK");
+            return;
+        }
 
-        StreamManifest streamManifest = await youtube.Videos.Streams.GetManifestAsync(video.Url, cancellationToken);
+        StreamManifest streamManifest = await youtube.Videos.Streams.GetManifestAsync(url, cancellationToken);
 
         IStreamInfo? bestAudioStream = streamManifest.GetAudioStreams().GetWithHighestBitrate();
-
-        string filename = Path.Combine(OutputPath, $"{artist.Replace("/", "_").Replace("\\", "_")} - {title.Replace("/", "_").Replace("\\", "_")}.mp3");
 
         await youtube.Videos.DownloadAsync(
             [bestAudioStream],
@@ -304,6 +325,15 @@ static class Program
             null,
             cancellationToken
         );
+    }
+
+    static async Task DownloadVideoJob(YoutubeClient youtube, MusicBrainzClient musicBrainz, PlaylistVideo video, CancellationToken cancellationToken = default)
+    {
+        (string artist, string title) = YouTube.NormalizeMetadata(video);
+
+        string filename = Path.Combine(OutputPath, $"{artist.Replace("/", "_").Replace("\\", "_")} - {title.Replace("/", "_").Replace("\\", "_")}.mp3");
+
+        await DownloadAudioData(filename, youtube, $"https://www.youtube.com/watch?v={video.Id}", cancellationToken);
 
         TagLib.File file = TagLib.File.Create(filename);
 

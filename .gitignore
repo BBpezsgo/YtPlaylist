@@ -1,5 +1,5 @@
 /bin
 /obj
-/.direnv
+/cache
 
 *.sln
