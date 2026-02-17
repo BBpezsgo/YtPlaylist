@@ -264,7 +264,7 @@ static class MusicBrainz
         {
             if (file.Tag.Pictures.Length == 0 || file.Tag.Pictures[0].Description != "MusicBrainz")
             {
-                await Utils.DownloadCoverImage(file, CoverArtArchive.GetCoverArtUri(release.Id), "MusicBrainz", TagLib.PictureType.FrontCover, cancellationToken);
+                await TagUtils.DownloadCoverImage(file, CoverArtArchive.GetCoverArtUri(release.Id), "MusicBrainz", TagLib.PictureType.FrontCover, cancellationToken);
             }
 
             file.Tag.MusicBrainzReleaseStatus = release.Status;
