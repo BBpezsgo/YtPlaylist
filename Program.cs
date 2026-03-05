@@ -7,24 +7,6 @@ static class Program
 {
     static int Main(string[] args)
     {
-#if DEBUG
-        args = [
-            "--playlist",
-            "PL3pKDp-F7PPtqyA3Q_F8lpLohgbZnOAiU",
-            "--playlist",
-            "PL3pKDp-F7PPuo3MIneE9MX77zKcEiw-QZ",
-            "--playlist",
-            "PL3pKDp-F7PPuI_BsyPZfXtNySJ5By-Yrb",
-            "--playlist",
-            "PL3pKDp-F7PPu785eiO43ccKgaOCLhpTBJ",
-            "--output",
-            //"/home/bb/Android/Internal storage/Music",
-            "/d1/Music",
-            "--httpcache",
-            "/home/bb/Projects/YtPlaylist/cache",
-        ];
-#endif
-
         List<string> playlistIds = [];
         string? outputPath = null;
         bool useCache = true;
