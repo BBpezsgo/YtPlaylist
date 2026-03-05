@@ -25,7 +25,7 @@ sealed class LrcLib : IDisposable
             BaseAddress = new Uri("https://lrclib.net/"),
         };
         Cache = cache;
-        Cooldown = TimeSpan.FromSeconds(5);
+        Cooldown = TimeSpan.FromSeconds(1);
     }
 
     public sealed class LyricsResponse

@@ -224,6 +224,7 @@ sealed class App
 
                     try
                     {
+                        Log.MinorAction($"Fetching lyrics for `{file.Tag.FirstPerformer} - {file.Tag.Title}`");
                         LrcLib.LyricsResponse? lyrics = await lrcLib.FetchLyrics(file.Tag.FirstPerformer, file.Tag.Title, null, null, cancellationToken);
                         if (lyrics is null) continue;
                         if (lyrics.SyncedLyrics is null && lyrics.PlainLyrics is null) continue;
