@@ -1,4 +1,5 @@
-﻿using Logger;
+﻿using System.Collections.Immutable;
+using Logger;
 
 namespace YtPlaylist;
 
@@ -6,28 +7,45 @@ static class Program
 {
     static int Main(string[] args)
     {
+#if DEBUG
+        args = [
+            "--playlist",
+            "PL3pKDp-F7PPtqyA3Q_F8lpLohgbZnOAiU",
+            "--playlist",
+            "PL3pKDp-F7PPuo3MIneE9MX77zKcEiw-QZ",
+            "--playlist",
+            "PL3pKDp-F7PPuI_BsyPZfXtNySJ5By-Yrb",
+            "--playlist",
+            "PL3pKDp-F7PPu785eiO43ccKgaOCLhpTBJ",
+            "--output",
+            //"/home/bb/Android/Internal storage/Music",
+            "/d1/Music",
+            "--httpcache",
+            "/home/bb/Projects/YtPlaylist/cache",
+        ];
+#endif
 
-        string? playlistId = null;
+        List<string> playlistIds = [];
         string? outputPath = null;
+        bool useCache = true;
+        bool dryRun = false;
+        bool download = true;
+        bool metadata = true;
+        bool lyrics = true;
+        string? httpCachePath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
                 case "-p" or "--playlist":
-                    if (playlistId is not null)
-                    {
-                        Log.Error($"Playlist id already defined");
-                        return 1;
-                    }
-
                     if (i + 1 == args.Length)
                     {
                         Log.Error($"Expected a playlist id after the argument {args[i]}");
                         return 1;
                     }
 
-                    playlistId = args[++i];
+                    playlistIds.Add(args[++i]);
                     break;
                 case "-o" or "--output":
                     if (outputPath is not null)
@@ -44,6 +62,36 @@ static class Program
 
                     outputPath = args[++i];
                     break;
+                case "--nocache":
+                    useCache = false;
+                    break;
+                case "--dry":
+                    dryRun = true;
+                    break;
+                case "--nodownload":
+                    download = false;
+                    break;
+                case "--nometadata":
+                    metadata = false;
+                    break;
+                case "--nolyrics":
+                    lyrics = false;
+                    break;
+                case "--httpcache":
+                    if (httpCachePath is not null)
+                    {
+                        Log.Error($"HTTP cache path already defined");
+                        return 1;
+                    }
+
+                    if (i + 1 == args.Length)
+                    {
+                        Log.Error($"Expected a path name after the argument {args[i]}");
+                        return 1;
+                    }
+
+                    httpCachePath = args[++i];
+                    break;
                 default:
                     Log.Error($"Unexpected argument {args[i]}");
                     return 1;
@@ -59,15 +107,21 @@ static class Program
             return 1;
         }
 
-        if (string.IsNullOrEmpty(playlistId))
+        if (playlistIds.Count == 0)
         {
-            Log.Error($"Playlist id not defined.");
+            Log.Error($"No playlist specified");
             return 1;
         }
 
         if (string.IsNullOrEmpty(outputPath))
         {
-            Log.Error($"Output directory not defined.");
+            Log.Error($"Output directory not specified");
+            return 1;
+        }
+
+        if (!Directory.Exists(outputPath))
+        {
+            Log.Error($"Output directory doesn't exists");
             return 1;
         }
 
@@ -81,8 +135,17 @@ static class Program
 
         new App()
         {
-            OutputPath = outputPath,
-            PlaylistId = playlistId,
+            Arguments = new AppArguments()
+            {
+                PlaylistIds = [.. playlistIds],
+                UseCache = useCache,
+                DryRun = dryRun,
+                Download = download,
+                Metadata = metadata,
+                Lyrics = lyrics,
+                OutputPath = outputPath,
+                HttpCachePath = httpCachePath ?? "./cache",
+            },
         }.Run(cancellationTokenSource.Token).ContinueWith(task =>
         {
             if (task.Exception is not null)

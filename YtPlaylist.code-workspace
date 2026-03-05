@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../Logger"
+		},
+		{
+			"path": "../MusicBrainz"
 		}
 	],
 	"settings": {}

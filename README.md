@@ -1,22 +1,28 @@
-# YouTube Playlist Downloader
+# YouTube Playlist Synchronizer
 
 [![.Net 10.0](https://img.shields.io/badge/10.0-606060?style=flat-square&logo=dotnet&labelColor=512BD4)](#)
 
 Downloads and synchronizes YouTube playlists as MP3 files so you can listen to them offline!!!
 
+## Build Dependencies
+
+- <https://github.com/BBpezsgo/MusicBrainz>
+- <https://github.com/BBpezsgo/Logger>
+
 ## Runtime Dependencies
 
 - `ffmpeg`
+- `yt-dlp`
 
-## Example Usage:
+## Example Usage
 
 `YtPlaylist -p YOUTUBE_PLAYLIST_ID -o ./Music`
 
 > [!TIP]
 > You can get the playlist id by navigating to the playlist on YouTube. For example:
-> 
-> https://music.youtube.com/playlist?list=PLCXNT9D5QsgZZrogN4KV__ImVNQWTmRjs
-> 
+>
+> <https://music.youtube.com/playlist?list=PLCXNT9D5QsgZZrogN4KV__ImVNQWTmRjs>
+>
 > And copy the part after the "list=" parameter, in this example its "PLCXNT9D5QsgZZrogN4KV__ImVNQWTmRjs".
 
 This will also fill the MP3 files' tags with cover art, album, artist and title from MusicBrainz.
@@ -26,6 +32,19 @@ If the title contains the channel's name, it will remove it. It will also remove
 
 If you give an existing directory as the output, or run the command twice, it will only download the music that aren't present in the directory but present in the playlist, and ask you if you want to delete the music files that are not present in the playlist anymore.
 You can also rename the files, because the youtube video's id is stored in the MP3 file, so no worries.
+
+It will create a subdirectory in the output directory named as the YouTube playlist.
+
+The program will fail if the output directory doesn't exists.
+
+## Arguments
+
+- `-p|--playlist` - The YouTube playlist id to download
+- `-o|--output` - Output directory to sync the playlist to
+- `--nodownload` - Don't download any new YouTube music videos
+- `--nometadata` - Don't fetch song metadata
+- `--nolyrics` - Don't fetch song lyrics
+- `--httpcache` -- Directory to use as a HTTP cache for the API requests (metadata and lyrics).
 
 ## Would you use this?
 

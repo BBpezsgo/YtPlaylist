@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Hqub.MusicBrainz;
+using Hqub.MusicBrainz.Entities;
 
 namespace YtPlaylist;
 
@@ -16,7 +17,7 @@ static class Extensions
     }
 
     public static bool IsNullOrEmpty<T>([NotNullWhen(false)] this IReadOnlyList<T>? list) => list is null || list.Count == 0;
-    public static bool IsNullOrEmpty<T>([NotNullWhen(false)] this QueryResult<T>? list) => list is null || list.Count == 0;
+    public static bool IsNullOrEmpty<T>([NotNullWhen(false)] this QueryResult<T>? list) where T : IEntity => list is null || list.Count == 0;
 
     public static string Quote(this string s)
     {

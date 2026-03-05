@@ -13,8 +13,10 @@ static class TagUtils
             {
                 imageBytes = await client.GetByteArrayAsync(url, cancellationToken);
             }
-            catch (HttpRequestException)
+            catch (Exception ex)
             {
+                if (cancellationToken.IsCancellationRequested) return false;
+                Log.Error(ex);
                 return false;
             }
         }
