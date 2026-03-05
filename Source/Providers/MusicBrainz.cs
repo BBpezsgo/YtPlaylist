@@ -45,10 +45,10 @@ static class MusicBrainz
         if (candidates.Count > 1)
         {
             Log.Warning($"Multiple artists found with name \"{artist}\"");
-            foreach (Artist item in candidates)
-            {
-                MusicBrainzUtils.Print(item);
-            }
+            //foreach (Artist item in candidates)
+            //{
+            //    MusicBrainzUtils.Print(item);
+            //}
 
             return null;
         }
@@ -109,8 +109,8 @@ static class MusicBrainz
 
             if (bestRecordings.Count > 1)
             {
-                Log.Warning($"Multiple recordings found: {Ansi.Bold(artist.Name)} - {Ansi.Bold(recordingTitle)}");
-                foreach (Recording recording in bestRecordings) MusicBrainzUtils.Print(recording);
+                //Log.Warning($"Multiple recordings found: {Ansi.Bold(artist.Name)} - {Ansi.Bold(recordingTitle)}");
+                //foreach (Recording recording in bestRecordings) MusicBrainzUtils.Print(recording);
                 return null;
             }
 
@@ -126,7 +126,7 @@ static class MusicBrainz
         {
             if (recordings.Count > 1)
             {
-                Log.Warning($"Multiple recordings found: {Ansi.Bold(artist.Name)} - {Ansi.Bold(recordingTitle)}");
+                //Log.Warning($"Multiple recordings found: {Ansi.Bold(artist.Name)} - {Ansi.Bold(recordingTitle)}");
                 return null;
             }
 
@@ -195,27 +195,6 @@ static class MusicBrainz
         return 0;
     }
 
-    static Release? GetRelease(Recording? recording)
-    {
-        if (recording is null) return null;
-        if (recording.Releases.IsNullOrEmpty()) return null;
-
-        List<Release> candidates = GetCandidates(recording.Releases, CompareReleases);
-
-        if (candidates.Count > 1)
-        {
-            Log.Warning($"Multiple releases found for song `{string.Join(" & ", (recording.Credits ?? []).Select(v => v.Name))} - {recording.Title}`");
-            foreach (Release item in candidates)
-            {
-                MusicBrainzUtils.Print(item);
-            }
-
-            return null;
-        }
-
-        return candidates.FirstOrDefault();
-    }
-
     [return: NotNullIfNotNull(nameof(v))]
     static string? FixMetaString(string? v)
     {
@@ -243,7 +222,7 @@ static class MusicBrainz
 
         if (recording is null)
         {
-            Log.Warning($"No recording found for `{string.Join(" & ", artists)} - {title}`");
+            //Log.Warning($"No recording found for `{string.Join(" & ", artists)} - {title}`");
             return;
         }
 
@@ -252,8 +231,8 @@ static class MusicBrainz
 
         if (file.Tag.Title != recording.Title)
         {
-            Log.Warning($"Title must be fixed: `{file.Tag.Title}` --> `{recording.Title}`");
-            //file.Tag.Title = release.Title;
+            Log.None($"Title fixed: `{file.Tag.Title}` --> `{recording.Title}`");
+            file.Tag.Title = recording.Title;
         }
 
         if (recording.Credits is not null)
@@ -261,25 +240,18 @@ static class MusicBrainz
             string[] performers = [.. recording.Credits.Select(v => v.Artist.Name)];
             if (!(file.Tag.Performers ?? []).SequenceEqual(performers))
             {
-                Log.Warning($"Performers must be fixed: `{string.Join(" & ", file.Tag.Performers ?? [])}` --> `{string.Join(" & ", performers)}`");
-                //file.Tag.Performers = performers;
+                Log.None($"Performers fixed: `{string.Join(" & ", file.Tag.Performers ?? [])}` --> `{string.Join(" & ", performers)}`");
+                file.Tag.Performers = performers;
             }
         }
 
-        var _release = GetRelease(recording);
-
-        if (recording.Releases is null)
+        if (recording.Releases.IsNullOrEmpty())
         {
             Log.Warning($"No release found: {Ansi.Bold(string.Join(" & ", artists))} - {Ansi.Bold(title)}");
         }
-        else if (recording.Releases.Count != 1)
-        {
-            Log.Warning($"Multiple releases found: {Ansi.Bold(string.Join(" & ", artists))} - {Ansi.Bold(title)}");
-            MusicBrainzUtils.Print(recording);
-        }
         else
         {
-            Release release = recording.Releases[0];
+            Release release = GetCandidates(recording.Releases, CompareReleases).First();
 
             if (file.Tag.Pictures.Length == 0 || file.Tag.Pictures[0].Description != "MusicBrainz")
             {

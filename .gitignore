@@ -2,5 +2,6 @@
 /obj
 /cache
 /publish
+/debug.sh
 
 *.sln

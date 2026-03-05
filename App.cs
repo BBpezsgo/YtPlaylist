@@ -3,8 +3,8 @@ using Hqub.MusicBrainz;
 using Logger;
 using YoutubeExplode;
 using YoutubeExplode.Playlists;
-using System.Diagnostics;
 using YoutubeExplode.Common;
+using System.Collections.Immutable;
 
 namespace YtPlaylist;
 
@@ -22,117 +22,123 @@ sealed class App
         TagLib.Id3v2.Tag.DefaultVersion = 3;
         TagLib.Id3v2.Tag.ForceDefaultVersion = true;
 
-        using YoutubeClient youtube = new();
+        Dictionary<string, Playlist> fetchedPlaylists = [];
+        Dictionary<string, ImmutableArray<string>> playlistFiles = [];
 
-        foreach (string playlistId in Arguments.PlaylistIds)
+        Log.Section($"Synchronizing playlists");
+
+        using (YoutubeClient youtube = new())
         {
-            HashSet<string> online = [];
-
-            Playlist playlist;
-            try
+            foreach (string playlistId in Arguments.PlaylistIds)
             {
-                playlist = await youtube.Playlists.GetAsync($"https://youtube.com/playlist?list={playlistId}", cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                if (cancellationToken.IsCancellationRequested) return;
-                Log.Error(ex);
-                continue;
-            }
+                HashSet<string> online = [];
 
-            Log.Section(
-                playlist.Count.HasValue
-                ? $"Synchronizing {playlist.Count} videos from playlist {playlist.Title}"
-                : $"Synchronizing playlist {playlist.Title}"
-            );
-
-            string outputPath = Path.Combine(Arguments.OutputPath, playlist.Title);
-            Dictionary<string, string> onDisk = [];
-
-            Log.MajorAction($"Indexing");
-
-            if (!Arguments.UseCache)
-            {
-                onDisk.Clear();
-                IndexFiles(onDisk, outputPath, cancellationToken);
-                if (!Arguments.DryRun) WriteIndex(onDisk, outputPath);
-            }
-            else if (!File.Exists(Path.Combine(outputPath, ".cache")))
-            {
-                Log.Info($"Index file does not exists {Path.Combine(outputPath, ".cache")}");
-
-                onDisk.Clear();
-                IndexFiles(onDisk, outputPath, cancellationToken);
-                if (!Arguments.DryRun) WriteIndex(onDisk, outputPath);
-            }
-            else
-            {
-                ReadIndex(onDisk, outputPath);
-            }
-
-
-            Log.MajorAction($"Downloading music videos");
-
-            await DownloadPlaylist(playlist, youtube, online, outputPath, onDisk, cancellationToken);
-
-            if (cancellationToken.IsCancellationRequested) return;
-
-            List<(string VideoId, string Filename)> deleteFiles = [];
-            foreach ((string videoId, string filename) in onDisk)
-            {
-                if (!online.Contains(videoId))
+                Playlist playlist;
+                try
                 {
-                    deleteFiles.Add((videoId, filename));
+                    playlist = await youtube.Playlists.GetAsync($"https://youtube.com/playlist?list={playlistId}", cancellationToken);
+                    fetchedPlaylists.Add(playlistId, playlist);
                 }
-            }
-
-            if (deleteFiles.Count > 0)
-            {
-                foreach ((_, string filename) in deleteFiles)
-                {
-                    Log.Warning($"Music file \"{Path.GetFileNameWithoutExtension(filename)}\" shouldn't be here");
-                }
-
-                if (!Arguments.DryRun && Log.AskYesNo("Do you want to delete the files above?", true))
-                {
-                    foreach ((string videoId, string filename) in deleteFiles)
-                    {
-                        File.Delete(filename);
-                        string lyricsFilename = Path.ChangeExtension(filename, ".lrc");
-                        if (File.Exists(lyricsFilename)) File.Delete(lyricsFilename);
-
-                        onDisk.Remove(videoId);
-                    }
-                }
-            }
-
-            if (!Arguments.DryRun) WriteIndex(onDisk, outputPath);
-
-            Log.None($"Videos synchronized");
-
-            if (Arguments.Metadata)
-            {
-                Log.MajorAction($"Fetching metadata");
-
-                using MusicBrainzClient musicBrainz = new(new HttpClient(new SocketsHttpHandler()
-                {
-                    AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate,
-                })
-                {
-                    DefaultRequestHeaders = { { "User-Agent", UserAgent } },
-                    //BaseAddress = new Uri("https://localhost:443/"),
-                    BaseAddress = new Uri("https://musicbrainz.org/ws/2/"),
-                })
-                {
-                    Cache = new FileRequestCache(Arguments.HttpCachePath)
-                    {
-                        Timeout = CacheTime,
-                    },
-                };
-
-                foreach (string filename in onDisk.Select(v => v.Value).ToArray())
+                catch (Exception ex)
                 {
                     if (cancellationToken.IsCancellationRequested) return;
+                    Log.Error(ex);
+                    continue;
+                }
+
+                string outputPath = Path.Combine(Arguments.OutputPath, playlist.Title);
+                Dictionary<string, string> onDisk = [];
+
+                Log.MajorAction($"Indexing");
+
+                if (!Arguments.UseCache)
+                {
+                    onDisk.Clear();
+                    IndexFiles(onDisk, outputPath, cancellationToken);
+                    if (!Arguments.DryRun) WriteIndex(onDisk, outputPath);
+                }
+                else if (!File.Exists(Path.Combine(outputPath, ".cache")))
+                {
+                    Log.Info($"Index file does not exists {Path.Combine(outputPath, ".cache")}");
+
+                    onDisk.Clear();
+                    IndexFiles(onDisk, outputPath, cancellationToken);
+                    if (!Arguments.DryRun) WriteIndex(onDisk, outputPath);
+                }
+                else
+                {
+                    ReadIndex(onDisk, outputPath);
+                }
+
+                Log.MajorAction($"Downloading music videos");
+
+                await DownloadPlaylist(playlist, youtube, online, outputPath, onDisk, cancellationToken);
+
+                if (cancellationToken.IsCancellationRequested) return;
+
+                List<(string VideoId, string Filename)> deleteFiles = [];
+                foreach ((string videoId, string filename) in onDisk)
+                {
+                    if (!online.Contains(videoId))
+                    {
+                        deleteFiles.Add((videoId, filename));
+                    }
+                }
+
+                if (deleteFiles.Count > 0)
+                {
+                    foreach ((_, string filename) in deleteFiles)
+                    {
+                        Log.Warning($"Music file \"{Path.GetFileNameWithoutExtension(filename)}\" shouldn't be here");
+                    }
+
+                    if (!Arguments.DryRun && Log.AskYesNo("Do you want to delete the files above?", true))
+                    {
+                        foreach ((string videoId, string filename) in deleteFiles)
+                        {
+                            File.Delete(filename);
+                            string lyricsFilename = Path.ChangeExtension(filename, ".lrc");
+                            if (File.Exists(lyricsFilename)) File.Delete(lyricsFilename);
+
+                            onDisk.Remove(videoId);
+                        }
+                    }
+                }
+
+                if (!Arguments.DryRun) WriteIndex(onDisk, outputPath);
+
+                playlistFiles.Add(playlistId, [.. onDisk.Select(v => v.Value)]);
+            }
+        }
+
+        if (Arguments.Metadata)
+        {
+            Log.Section($"Fetching metadata");
+            //using var progress = new ProgressBar();
+
+            using MusicBrainzClient musicBrainz = new(new HttpClient(new SocketsHttpHandler()
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate,
+            })
+            {
+                DefaultRequestHeaders = { { "User-Agent", UserAgent } },
+                BaseAddress = new Uri("https://musicbrainz.org/ws/2/"),
+            })
+            {
+                Cache = new FileRequestCache(Arguments.HttpCachePath)
+                {
+                    Timeout = CacheTime,
+                },
+            };
+
+            foreach (string playlistId in Arguments.PlaylistIds)
+            {
+                string outputPath = Path.Combine(Arguments.OutputPath, fetchedPlaylists[playlistId].Title);
+
+                foreach (string filename in playlistFiles[playlistId])
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    if (!File.Exists(filename)) continue;
 
                     using TagLib.File file = TagLib.File.Create(filename);
 
@@ -186,33 +192,46 @@ sealed class App
                             file.Tag.Title = title;
                         }
 
-                        Log.MinorAction(
-                            title is not null
-                            ? performers is not null
-                            ? $"Fetching metadata for `{string.Join(" & ", performers)} - {title}`"
-                            : $"Fetching metadata for `? - {title}`"
-                            : $"Fetching metadata for `?`"
-                        );
+                        //progress.Report(
+                        //    title is not null
+                        //    ? performers is not null
+                        //    ? $"Fetching metadata for `{string.Join(" & ", performers)} - {title}`"
+                        //    : $"Fetching metadata for `? - {title}`"
+                        //    : $"Fetching metadata for `?`"
+                        //);
+                        //Log.MinorAction(
+                        //    title is not null
+                        //    ? performers is not null
+                        //    ? $"Fetching metadata for `{string.Join(" & ", performers)} - {title}`"
+                        //    : $"Fetching metadata for `? - {title}`"
+                        //    : $"Fetching metadata for `?`"
+                        //);
                         await MusicBrainz.FetchMetadata(file, musicBrainz, cancellationToken);
 
                         if (!Arguments.DryRun) file.Save();
                     }
                 }
             }
+        }
 
-            if (Arguments.Lyrics)
+        if (Arguments.Lyrics)
+        {
+            Log.Section($"Fetching lyrics");
+            //using var progress = new ProgressBar();
+
+            using LrcLib lrcLib = new(new(Arguments.HttpCachePath)
             {
-                Log.MajorAction($"Fetching lyrics");
+                Timeout = CacheTime,
+            });
 
-                using LrcLib lrcLib = new(new(Arguments.HttpCachePath)
-                {
-                    Timeout = CacheTime,
-                });
+            foreach (string playlistId in Arguments.PlaylistIds)
+            {
+                string outputPath = Path.Combine(Arguments.OutputPath, fetchedPlaylists[playlistId].Title);
 
-                foreach (string filename in onDisk.Select(v => v.Value).ToArray())
+                foreach (string filename in playlistFiles[playlistId])
                 {
                     if (cancellationToken.IsCancellationRequested) return;
-
+                    if (!File.Exists(filename)) continue;
                     if (File.Exists(Path.ChangeExtension(filename, ".lrc"))) continue;
 
                     using TagLib.File file = TagLib.File.Create(filename);
@@ -224,7 +243,7 @@ sealed class App
 
                     try
                     {
-                        Log.MinorAction($"Fetching lyrics for `{file.Tag.FirstPerformer} - {file.Tag.Title}`");
+                        //progress.Report($"Fetching lyrics for `{file.Tag.FirstPerformer} - {file.Tag.Title}`");
                         LrcLib.LyricsResponse? lyrics = await lrcLib.FetchLyrics(file.Tag.FirstPerformer, file.Tag.Title, null, null, cancellationToken);
                         if (lyrics is null) continue;
                         if (lyrics.SyncedLyrics is null && lyrics.PlainLyrics is null) continue;
@@ -413,11 +432,14 @@ sealed class App
 
         tasks[0] = Task.Run(async () =>
         {
-            Log.MinorAction("Fetching videos");
+            //Log.MinorAction("Fetching videos");
+            //int n = 0;
+            //using var progress = new ProgressBar() { MaxWidth = 20 };
             await foreach (Batch<PlaylistVideo> batch in youtube.Playlists.GetVideoBatchesAsync(playlist.Url, cancellationToken))
             {
                 foreach (PlaylistVideo video in batch.Items)
                 {
+                    //if (playlist.Count.HasValue) progress.Report(n++, playlist.Count.Value);
                     online.Add(video.Id);
                     if (onDisk.ContainsKey(video.Id)) continue;
                     await channel.Writer.WriteAsync(video, cancellationToken);
@@ -426,7 +448,7 @@ sealed class App
             }
             channel.Writer.Complete();
             if (cancellationToken.IsCancellationRequested) return;
-            Log.MinorAction("All videos fetched");
+            //Log.MinorAction("All videos fetched");
         }, cancellationToken);
 
         for (int i = 0; i < MaxConcurrency; i++)

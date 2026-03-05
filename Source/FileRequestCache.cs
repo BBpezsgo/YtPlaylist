@@ -106,12 +106,15 @@ public class FileRequestCache(string path) : IRequestCache
             };
 
             if (!string.Equals(entry.Request, request, StringComparison.Ordinal)) return null;
+            if ((int)entry.Status >= 500) return null;
 
             return entry;
         }
 
         public static async Task Write(string path, string request, Stream response, HttpStatusCode status)
         {
+            if ((int)status >= 500) return;
+
             byte[] buffer;
             using (MemoryStream memoryStream = new())
             {
