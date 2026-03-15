@@ -18,11 +18,6 @@ public class FileRequestCache(string path) : IRequestCache
 
     public async Task Add(string request, Stream response, HttpStatusCode status)
     {
-        if (!Directory.Exists(Path))
-        {
-            Directory.CreateDirectory(Path);
-        }
-
         await CacheEntry.Write(Path, request, response, status);
     }
 
@@ -90,7 +85,7 @@ public class FileRequestCache(string path) : IRequestCache
 
         public static CacheEntry? Read(string path, string request)
         {
-            string filename = GetCacheFileName(path, Encoding.ASCII.GetBytes(request));
+            string filename = System.IO.Path.Combine(path, GetCacheFileName(Encoding.ASCII.GetBytes(request)));
 
             if (!File.Exists(filename)) return null;
 
@@ -115,6 +110,8 @@ public class FileRequestCache(string path) : IRequestCache
         {
             if ((int)status >= 500) return;
 
+            if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+
             byte[] buffer;
             using (MemoryStream memoryStream = new())
             {
@@ -122,7 +119,7 @@ public class FileRequestCache(string path) : IRequestCache
                 buffer = memoryStream.ToArray();
             }
 
-            string filename = GetCacheFileName(path, Encoding.ASCII.GetBytes(request));
+            string filename = System.IO.Path.Combine(path, GetCacheFileName(Encoding.ASCII.GetBytes(request)));
 
             using (StreamReader reader = new(response, leaveOpen: true))
             using (FileStream stream = File.Create(filename))
@@ -152,7 +149,7 @@ public class FileRequestCache(string path) : IRequestCache
             return TimestampToDateTime(timestamp, DateTimeKind.Utc);
         }
 
-        static string GetCacheFileName(string path, ReadOnlySpan<byte> buffer) => System.IO.Path.Combine(path, GetHash(buffer)) + ".bin";
+        static string GetCacheFileName(ReadOnlySpan<byte> buffer) => $"{GetHash(buffer)}.bin";
 
         [SuppressMessage("Security", "CA5351")]
         static string GetHash(ReadOnlySpan<byte> bytes)

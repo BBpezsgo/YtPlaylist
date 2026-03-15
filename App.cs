@@ -49,6 +49,8 @@ sealed class App
                 string outputPath = Path.Combine(Arguments.OutputPath, playlist.Title);
                 Dictionary<string, string> onDisk = [];
 
+                if (!Directory.Exists(outputPath)) Directory.CreateDirectory(outputPath);
+
                 Log.MajorAction($"Indexing");
 
                 if (!Arguments.UseCache)
@@ -59,8 +61,6 @@ sealed class App
                 }
                 else if (!File.Exists(Path.Combine(outputPath, ".cache")))
                 {
-                    Log.Info($"Index file does not exists {Path.Combine(outputPath, ".cache")}");
-
                     onDisk.Clear();
                     IndexFiles(onDisk, outputPath, cancellationToken);
                     if (!Arguments.DryRun) WriteIndex(onDisk, outputPath);
@@ -350,6 +350,9 @@ sealed class App
                 }
             }
         }
+
+        Console.WriteLine();
+        Console.WriteLine("Done");
     }
 
     #region Index
@@ -389,6 +392,9 @@ sealed class App
     {
         Log.MinorAction("Indexing files");
         bool? removeDuplicated = null;
+        bool? removeUnexpected = null;
+
+        if (!Directory.Exists(path)) return;
 
         foreach (string filename in Directory.GetFiles(path, "*.mp3"))
         {
@@ -396,7 +402,7 @@ sealed class App
 
             TagLib.File file = TagLib.File.Create(filename, TagLib.ReadStyle.PictureLazy);
 
-            if (!string.IsNullOrWhiteSpace(file.Tag.Description) && file.Tag.Description.Length < 13)
+            if (!string.IsNullOrWhiteSpace(file.Tag.Description))
             {
                 if (!onDisk.TryAdd(file.Tag.Description, filename))
                 {
@@ -416,6 +422,16 @@ sealed class App
             else
             {
                 Log.Warning($"Unexpected file {Path.GetFileName(filename)}");
+
+                if (!removeUnexpected.HasValue)
+                {
+                    removeUnexpected = Log.AskYesNo("Do you want to remove unexpected files?", true);
+                }
+
+                if (removeUnexpected.Value)
+                {
+                    File.Delete(filename);
+                }
             }
         }
     }
